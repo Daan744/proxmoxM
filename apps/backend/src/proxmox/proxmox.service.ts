@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios, { AxiosInstance } from "axios";
-import https from "https";
+import * as https from "https";
 
 @Injectable()
 export class ProxmoxService {
