@@ -1,7 +1,15 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios, { AxiosInstance } from "axios";
+import * as fs from "fs";
 import * as https from "https";
+
+// #region agent log
+const DBG_FILE = "/app/debug-ba887e.log";
+function dbg(hypothesisId: string, location: string, message: string, data: Record<string, unknown> = {}) {
+  try { fs.appendFileSync(DBG_FILE, JSON.stringify({ sessionId: "ba887e", hypothesisId, location, message, data, timestamp: Date.now() }) + "\n"); } catch {}
+}
+// #endregion
 
 @Injectable()
 export class ProxmoxService {
@@ -14,24 +22,81 @@ export class ProxmoxService {
     const tokenSecret = this.config.getOrThrow<string>("PROXMOX_TOKEN_SECRET");
     const tlsInsecure = this.config.get("PROXMOX_TLS_INSECURE", "false") === "true";
 
+    const baseURL = `https://${host}:8006/api2/json`;
+    const authHeader = `PVEAPIToken=${tokenId}=${tokenSecret}`;
+
+    // #region agent log
+    dbg("H1", "proxmox.service.ts:constructor", "Proxmox client config", {
+      baseURL,
+      authHeaderPrefix: authHeader.substring(0, 30) + "...",
+      tlsInsecure,
+      hostRaw: host,
+      tokenIdRaw: tokenId
+    });
+    // #endregion
+
     this.client = axios.create({
-      baseURL: `https://${host}:8006/api2/json`,
+      baseURL,
       httpsAgent: new https.Agent({ rejectUnauthorized: !tlsInsecure }),
-      headers: {
-        Authorization: `PVEAPIToken=${tokenId}=${tokenSecret}`
-      },
+      headers: { Authorization: authHeader },
       timeout: 30000
     });
   }
 
   private async get<T>(url: string): Promise<T> {
-    const { data } = await this.client.get(url);
-    return data.data as T;
+    // #region agent log
+    dbg("H4", "proxmox.service.ts:get", "GET request start", { url });
+    // #endregion
+    try {
+      const response = await this.client.get(url);
+      // #region agent log
+      dbg("H4", "proxmox.service.ts:get", "GET raw response shape", {
+        url,
+        status: response.status,
+        hasData: response.data != null,
+        dataType: typeof response.data,
+        hasDataData: response.data?.data != null,
+        dataDataType: typeof response.data?.data,
+        dataKeys: response.data ? Object.keys(response.data) : [],
+        dataDataSample: Array.isArray(response.data?.data)
+          ? `array[${response.data.data.length}]`
+          : typeof response.data?.data === "object" && response.data?.data
+            ? Object.keys(response.data.data).slice(0, 10)
+            : String(response.data?.data).substring(0, 200)
+      });
+      // #endregion
+      return response.data.data as T;
+    } catch (err: unknown) {
+      const axErr = err as { response?: { status?: number; data?: unknown }; code?: string; message?: string };
+      // #region agent log
+      dbg("H1", "proxmox.service.ts:get", "GET request FAILED", {
+        url,
+        status: axErr.response?.status,
+        errCode: axErr.code,
+        errMessage: axErr.message?.substring(0, 300),
+        responseData: JSON.stringify(axErr.response?.data ?? null).substring(0, 500)
+      });
+      // #endregion
+      throw err;
+    }
   }
 
   private async post<T>(url: string, body?: Record<string, unknown>): Promise<T> {
-    const { data } = await this.client.post(url, body);
-    return data.data as T;
+    try {
+      const { data } = await this.client.post(url, body);
+      return data.data as T;
+    } catch (err: unknown) {
+      const axErr = err as { response?: { status?: number; data?: unknown }; code?: string; message?: string };
+      // #region agent log
+      dbg("H1", "proxmox.service.ts:post", "POST request FAILED", {
+        url,
+        status: axErr.response?.status,
+        errCode: axErr.code,
+        errMessage: axErr.message?.substring(0, 300)
+      });
+      // #endregion
+      throw err;
+    }
   }
 
   private async del<T>(url: string): Promise<T> {

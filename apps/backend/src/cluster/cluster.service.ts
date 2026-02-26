@@ -1,5 +1,12 @@
 import { Injectable } from "@nestjs/common";
+import * as fs from "fs";
 import { ProxmoxService } from "../proxmox/proxmox.service";
+
+// #region agent log
+function dbg(hId: string, loc: string, msg: string, data: Record<string, unknown> = {}) {
+  try { fs.appendFileSync("/app/debug-ba887e.log", JSON.stringify({ sessionId: "ba887e", hypothesisId: hId, location: loc, message: msg, data, timestamp: Date.now() }) + "\n"); } catch {}
+}
+// #endregion
 
 @Injectable()
 export class ClusterService {
@@ -9,7 +16,13 @@ export class ClusterService {
     let nodes: Array<Record<string, unknown>> = [];
     try {
       nodes = await this.proxmox.listNodes();
-    } catch {
+      // #region agent log
+      dbg("H5", "cluster.service.ts:health", "listNodes result", { count: nodes.length, sample: JSON.stringify(nodes.slice(0, 2)).substring(0, 500) });
+      // #endregion
+    } catch (err) {
+      // #region agent log
+      dbg("H5", "cluster.service.ts:health", "listNodes FAILED", { error: String(err).substring(0, 300) });
+      // #endregion
       return { nodes: [], quorum: null };
     }
     const detailed = await Promise.all(
@@ -17,8 +30,10 @@ export class ClusterService {
         const nodeName = String(node.node ?? "");
         try {
           const status = await this.proxmox.nodeStatus(nodeName);
+          // #region agent log
+          dbg("H4", "cluster.service.ts:nodeStatus", "raw nodeStatus keys", { nodeName, keys: Object.keys(status), memoryType: typeof status.memory, memVal: status.mem, freeVal: status.free, uptimeVal: status.uptime, cpuVal: status.cpu, memoryContent: JSON.stringify(status.memory ?? null).substring(0, 300) });
+          // #endregion
           const storageRaw = await this.proxmox.listNodeStorage(nodeName);
-          // Proxmox returns either memory.{used,total,free} or top-level mem (total) + free
           const memNested = status.memory as { used?: number; total?: number; free?: number } | undefined;
           let memUsedBytes = Number(memNested?.used ?? 0);
           let memTotalBytes = Math.max(Number(memNested?.total ?? 0), 1);
