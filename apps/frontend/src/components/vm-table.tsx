@@ -11,13 +11,23 @@ const STATUS_COLORS: Record<string, string> = {
   DELETED: "bg-zinc-900 text-zinc-500"
 };
 
-export function VmTable({ rows, onAction, loading }: {
+export function VmTable({ rows, onAction, loading, showSyncCta }: {
   rows: Vm[];
   onAction: (id: string, action: "start" | "stop" | "reboot" | "delete") => Promise<void>;
   loading?: boolean;
+  showSyncCta?: boolean;
 }) {
   if (loading) return <p className="text-zinc-400">Laden...</p>;
-  if (rows.length === 0) return <p className="text-zinc-400">Geen VMs gevonden.</p>;
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-8 text-center">
+        <p className="text-zinc-400">Geen VMs gevonden.</p>
+        {showSyncCta && (
+          <p className="mt-2 text-sm text-zinc-500">Klik op &quot;Sync Proxmox&quot; om bestaande VMs uit Proxmox te importeren.</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="overflow-x-auto rounded border border-zinc-800">

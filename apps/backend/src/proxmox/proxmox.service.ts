@@ -150,23 +150,33 @@ export class ProxmoxService {
     const nodes = await this.listNodes();
     const isos: Array<{ node: string; storage: string; volid: string; name: string; size: number }> = [];
     for (const node of nodes) {
-      const nodeName = String(node.node);
-      const storages = await this.listNodeStorage(nodeName);
+      const nodeName = String(node.node ?? "");
+      if (!nodeName) continue;
+      let storages: Array<Record<string, unknown>> = [];
+      try {
+        storages = await this.listNodeStorage(nodeName);
+      } catch {
+        continue;
+      }
       for (const s of storages) {
-        if (!String(s.content ?? "").includes("iso")) continue;
+        const content = s.content != null ? String(s.content) : "";
+        if (!content.includes("iso")) continue;
         try {
-          const files = await this.listStorageContent(nodeName, String(s.storage), "iso");
-          for (const f of files) {
+          const files = await this.listStorageContent(nodeName, String(s.storage ?? ""), "iso");
+          const list = Array.isArray(files) ? files : [];
+          for (const f of list) {
+            const volid = String(f.volid ?? "");
+            if (!volid) continue;
             isos.push({
               node: nodeName,
-              storage: String(s.storage),
-              volid: String(f.volid),
-              name: String(f.volid).split("/").pop() ?? String(f.volid),
+              storage: String(s.storage ?? ""),
+              volid,
+              name: volid.split("/").pop() ?? volid,
               size: Number(f.size ?? 0)
             });
           }
-        } catch {
-          this.logger.warn(`Failed listing ISOs on ${nodeName}/${String(s.storage)}`);
+        } catch (err) {
+          this.logger.warn(`Failed listing ISOs on ${nodeName}/${String(s.storage)}: ${String(err)}`);
         }
       }
     }

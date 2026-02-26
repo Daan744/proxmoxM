@@ -26,10 +26,13 @@ export function Sidebar() {
   const links = user.role === "ADMIN" ? [...baseLinks, ...adminLinks] : baseLinks;
 
   return (
-    <aside className="w-64 border-r border-zinc-800 bg-zinc-950 p-4">
+    <aside className="flex w-64 flex-col border-r border-zinc-800 bg-zinc-950 p-4" role="navigation" aria-label="Hoofdnavigatie">
       <div className="mb-6">
         <p className="text-lg font-semibold text-white">Proxmox Portal</p>
         <p className="text-xs text-zinc-400">{user.email}</p>
+        <span className={`mt-1 inline-block rounded px-2 py-0.5 text-xs font-medium ${user.role === "ADMIN" ? "bg-amber-800 text-amber-200" : "bg-zinc-700 text-zinc-300"}`}>
+          {user.role}
+        </span>
       </div>
       <nav className="space-y-1">
         {links.map((link) => (
@@ -45,14 +48,16 @@ export function Sidebar() {
         ))}
       </nav>
       <button
+        type="button"
         onClick={async () => {
-          await api.post("/auth/logout");
+          try { await api.post("/auth/logout"); } catch {}
           clearSession();
           router.push("/login");
         }}
-        className="mt-6 rounded bg-red-700 px-3 py-2 text-sm text-white hover:bg-red-600"
+        className="mt-auto rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-sm font-medium text-red-300 hover:bg-red-900/50"
+        aria-label="Uitloggen"
       >
-        Logout
+        Uitloggen
       </button>
     </aside>
   );

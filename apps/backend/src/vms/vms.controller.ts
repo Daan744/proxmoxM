@@ -1,6 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Role } from "@prisma/client";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { Roles } from "../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { RolesGuard } from "../common/guards/roles.guard";
 import { CreateVmDto } from "./dto";
 import { VmsService } from "./vms.service";
 
@@ -24,22 +27,19 @@ export class VmsController {
     return this.vmsService.listNodes();
   }
 
-  @Get("proxmox")
-  listProxmoxVms() {
-    return this.vmsService.listProxmoxVms();
-  }
-
-  @Post("sync")
-  syncFromProxmox() {
-    return this.vmsService.syncFromProxmox();
-  }
-
   @Post()
   create(
     @Body() dto: CreateVmDto,
     @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }
   ) {
     return this.vmsService.create(dto, user);
+  }
+
+  @Post("sync")
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  syncFromProxmox(@CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
+    return this.vmsService.syncFromProxmox(user.id);
   }
 
   @Get(":id")

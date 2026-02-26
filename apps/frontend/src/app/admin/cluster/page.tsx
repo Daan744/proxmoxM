@@ -9,18 +9,30 @@ export default function AdminClusterPage() {
   const [quorum, setQuorum] = useState<{ quorate: boolean; nodes: number } | null>(null);
   const [ha, setHa] = useState<Array<Record<string, unknown>>>([]);
 
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const load = useCallback(async () => {
-    try { const res = await api.get("/cluster/health"); setNodes(res.data.nodes ?? []); setQuorum(res.data.quorum ?? null); } catch {}
-    try { const res = await api.get("/cluster/ha/resources"); setHa(res.data); } catch {}
+    try {
+      const res = await api.get("/cluster/health");
+      setNodes(Array.isArray(res.data?.nodes) ? res.data.nodes : []);
+      setQuorum(res.data?.quorum ?? null);
+      setLastRefresh(new Date());
+    } catch {}
+    try {
+      const res = await api.get("/cluster/ha/resources");
+      setHa(Array.isArray(res.data) ? res.data : []);
+    } catch {}
   }, []);
 
   useEffect(() => { load(); const i = setInterval(load, 30000); return () => clearInterval(i); }, [load]);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Cluster health</h1>
-        <button onClick={load} className="rounded bg-zinc-700 px-3 py-2 text-sm text-white">Vernieuwen</button>
+        <div className="flex items-center gap-2">
+          {lastRefresh && <span className="text-xs text-zinc-500">Laatst ververst: {lastRefresh.toLocaleTimeString("nl-NL")}</span>}
+          <button onClick={load} className="rounded-lg bg-zinc-700 px-3 py-2 text-sm text-white hover:bg-zinc-600">Vernieuwen</button>
+        </div>
       </div>
 
       {quorum && (
@@ -39,6 +51,9 @@ export default function AdminClusterPage() {
             <Bar label="CPU" percent={n.cpuUsagePercent} />
             <Bar label="RAM" percent={n.memPercent} detail={`${n.memUsedMB} / ${n.memTotalMB} MB`} />
             <p className="mt-2 text-xs text-zinc-500">Uptime: {n.uptimeFormatted}</p>
+            {n.loadavg && n.loadavg.length > 0 && (
+              <p className="mt-1 text-xs text-zinc-500">Load: {n.loadavg.map((l) => l.toFixed(2)).join(", ")}</p>
+            )}
             {n.storage.length > 0 && (
               <div className="mt-3 space-y-2">
                 <p className="text-xs font-medium text-zinc-400">Storage</p>

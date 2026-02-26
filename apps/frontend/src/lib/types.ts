@@ -94,6 +94,7 @@ export interface ClusterNode {
   memPercent: number;
   uptimeSeconds: number;
   uptimeFormatted: string;
+  loadavg?: number[];
   storage: StorageInfo[];
 }
 

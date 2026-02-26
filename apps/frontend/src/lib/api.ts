@@ -1,9 +1,11 @@
 import axios from "axios";
 import { clearSession, getAccessToken, setSession } from "./auth";
 
+const baseURL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001",
-  withCredentials: true
+  baseURL,
+  withCredentials: true,
+  timeout: 30000
 });
 
 api.interceptors.request.use((config) => {
@@ -25,7 +27,7 @@ api.interceptors.response.use(
       refreshing = true;
       try {
         const refresh = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/auth/refresh`,
+          `${baseURL}/auth/refresh`,
           {},
           { withCredentials: true }
         );

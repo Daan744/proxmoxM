@@ -24,10 +24,14 @@ export default function NewVmPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [loadingMeta, setLoadingMeta] = useState(true);
   useEffect(() => {
-    api.get("/templates").then((r) => { setTemplates(r.data); if (r.data[0]) setTemplateId(r.data[0].id); }).catch(() => {});
-    api.get("/vms/isos").then((r) => { setIsos(r.data); if (r.data[0]) setIsoPath(r.data[0].volid); }).catch(() => {});
-    api.get("/vms/nodes").then((r) => setNodes(r.data)).catch(() => {});
+    setLoadingMeta(true);
+    Promise.all([
+      api.get("/templates").then((r) => { setTemplates(Array.isArray(r.data) ? r.data : []); return r; }).catch(() => ({ data: [] })),
+      api.get("/vms/isos").then((r) => { const list = Array.isArray(r.data) ? r.data : []; setIsos(list); if (list[0]) setIsoPath(list[0].volid); return r; }).catch(() => ({ data: [] })),
+      api.get("/vms/nodes").then((r) => setNodes(Array.isArray(r.data) ? r.data : [])).catch(() => {})
+    ]).finally(() => setLoadingMeta(false));
   }, []);
 
   const selectedTemplate = templates.find((t) => t.id === templateId);
@@ -49,6 +53,10 @@ export default function NewVmPage() {
     } finally { setSubmitting(false); }
   };
 
+  function formatSize(bytes: number): string {
+    if (bytes <= 0) return ""; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
   return (
     <div className="max-w-2xl space-y-4">
       <h1 className="text-2xl font-semibold">Nieuwe VM</h1>
@@ -60,14 +68,14 @@ export default function NewVmPage() {
         <label className="block text-sm text-zinc-400">Naam<input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full" /></label>
         {mode === "template" ? (
           <label className="block text-sm text-zinc-400">Template
-            <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className="mt-1 w-full">
-              {templates.map((t) => <option key={t.id} value={t.id}>{t.name} (vmid {t.templateVmid})</option>)}
+            <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-white" disabled={loadingMeta}>
+              {loadingMeta ? <option>Templates laden...</option> : templates.length === 0 ? <option value="">Geen templates – sync vanuit Proxmox in Admin → Templates</option> : templates.map((t) => <option key={t.id} value={t.id}>{t.name} (vmid {t.templateVmid})</option>)}
             </select>
           </label>
         ) : (
           <label className="block text-sm text-zinc-400">ISO
-            <select value={isoPath} onChange={(e) => setIsoPath(e.target.value)} className="mt-1 w-full">
-              {isos.map((iso) => <option key={iso.volid} value={iso.volid}>{iso.name} ({iso.node})</option>)}
+            <select value={isoPath} onChange={(e) => setIsoPath(e.target.value)} className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-white" disabled={loadingMeta}>
+              {loadingMeta ? <option>ISO&#39;s laden...</option> : isos.length === 0 ? <option value="">Geen ISO&#39;s gevonden – upload in Proxmox naar een storage met ISO-content</option> : isos.map((iso) => <option key={iso.volid} value={iso.volid}>{iso.name} ({iso.node}) {formatSize(iso.size)}</option>)}
             </select>
           </label>
         )}
