@@ -24,6 +24,16 @@ export class VmsController {
     return this.vmsService.listNodes();
   }
 
+  @Get("proxmox")
+  listProxmoxVms() {
+    return this.vmsService.listProxmoxVms();
+  }
+
+  @Post("sync")
+  syncFromProxmox() {
+    return this.vmsService.syncFromProxmox();
+  }
+
   @Post()
   create(
     @Body() dto: CreateVmDto,

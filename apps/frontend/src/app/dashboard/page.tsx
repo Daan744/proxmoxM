@@ -11,12 +11,25 @@ export default function DashboardPage() {
   const [nodes, setNodes] = useState<ClusterNode[]>([]);
   const user = getSessionUser();
 
-  useEffect(() => {
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  const load = async () => {
     api.get("/vms").then((r) => setVms(r.data)).catch(() => {});
     if (user?.role === "ADMIN") {
       api.get("/cluster/health").then((r) => setNodes(r.data.nodes ?? [])).catch(() => {});
     }
-  }, []);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const syncVms = async () => {
+    setSyncMsg(null);
+    try {
+      const r = await api.post("/vms/sync");
+      setSyncMsg(`Sync: ${r.data.imported} geimporteerd, ${r.data.updated} bijgewerkt (${r.data.total} op Proxmox)`);
+      await load();
+    } catch { setSyncMsg("Sync mislukt - check API token rechten"); }
+  };
 
   const running = vms.filter((v) => v.status === "RUNNING").length;
   const stopped = vms.filter((v) => v.status === "STOPPED").length;
@@ -53,11 +66,15 @@ export default function DashboardPage() {
         </>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap items-center">
         <Link href="/vms/new" className="rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-600">Nieuwe VM</Link>
         {user?.role === "ADMIN" && (
-          <Link href="/admin/cluster" className="rounded bg-zinc-700 px-4 py-2 text-sm text-white hover:bg-zinc-600">Cluster overzicht</Link>
+          <>
+            <Link href="/admin/cluster" className="rounded bg-zinc-700 px-4 py-2 text-sm text-white hover:bg-zinc-600">Cluster overzicht</Link>
+            <button onClick={syncVms} className="rounded bg-green-700 px-4 py-2 text-sm text-white hover:bg-green-600">Sync VMs vanuit Proxmox</button>
+          </>
         )}
+        {syncMsg && <span className="text-sm text-green-400">{syncMsg}</span>}
       </div>
     </div>
   );

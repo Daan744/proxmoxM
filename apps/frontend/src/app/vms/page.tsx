@@ -9,6 +9,7 @@ import type { Vm } from "@/lib/types";
 export default function VmsPage() {
   const [vms, setVms] = useState<Vm[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,9 +35,11 @@ export default function VmsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">VM overzicht</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <button onClick={async () => { setSyncMsg(null); try { const r = await api.post("/vms/sync"); setSyncMsg(`${r.data.imported} geimporteerd, ${r.data.updated} bijgewerkt`); await load(); } catch { setSyncMsg("Sync mislukt"); } }} className="rounded bg-green-700 px-3 py-2 text-sm text-white">Sync Proxmox</button>
           <button onClick={load} className="rounded bg-zinc-700 px-3 py-2 text-sm text-white">Vernieuwen</button>
           <Link href="/vms/new" className="rounded bg-blue-700 px-3 py-2 text-sm text-white">Nieuwe VM</Link>
+          {syncMsg && <span className="text-sm text-green-400">{syncMsg}</span>}
         </div>
       </div>
       <VmTable rows={vms} onAction={onAction} loading={loading} />

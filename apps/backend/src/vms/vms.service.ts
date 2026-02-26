@@ -46,11 +46,83 @@ export class VmsService {
   }
 
   async listIsos() {
-    return this.proxmox.listAllIsos();
+    try {
+      return await this.proxmox.listAllIsos();
+    } catch (error) {
+      return [];
+    }
   }
 
   async listNodes() {
-    return this.proxmox.listNodes();
+    try {
+      return await this.proxmox.listNodes();
+    } catch {
+      return [];
+    }
+  }
+
+  async listProxmoxVms() {
+    const nodes = await this.proxmox.listNodes();
+    const allVms: Array<Record<string, unknown> & { _node: string }> = [];
+    for (const node of nodes) {
+      const nodeName = String(node.node);
+      try {
+        const qemus = await this.proxmox.listQemu(nodeName);
+        for (const vm of qemus) {
+          if (vm.template === 1 || vm.template === true) continue;
+          allVms.push({ ...vm, _node: nodeName });
+        }
+      } catch {}
+    }
+    return allVms;
+  }
+
+  async syncFromProxmox() {
+    const proxmoxVms = await this.listProxmoxVms();
+    let imported = 0;
+    let updated = 0;
+
+    for (const pvm of proxmoxVms) {
+      const vmid = Number(pvm.vmid);
+      const existing = await this.prisma.vm.findUnique({ where: { vmid } });
+
+      const powerState = pvm.status === "running" ? VmPowerState.RUNNING : VmPowerState.STOPPED;
+      const status = pvm.status === "running" ? VmStatus.RUNNING : VmStatus.STOPPED;
+
+      if (existing) {
+        await this.prisma.vm.update({
+          where: { id: existing.id },
+          data: {
+            currentNode: pvm._node,
+            powerState,
+            status: existing.status === VmStatus.FAILED || existing.status === VmStatus.DELETED ? existing.status : status,
+            lastStatusSyncAt: new Date()
+          }
+        });
+        updated++;
+      } else {
+        const cores = Number(pvm.cpus ?? pvm.maxcpu ?? 1);
+        const memoryMB = Math.round(Number(pvm.maxmem ?? 0) / 1048576);
+        const diskGB = Math.round(Number(pvm.maxdisk ?? 0) / 1073741824);
+
+        await this.prisma.vm.create({
+          data: {
+            name: String(pvm.name ?? `vm-${vmid}`),
+            vmid,
+            currentNode: pvm._node,
+            cores: cores || 1,
+            memoryMB: memoryMB || 512,
+            diskGB: diskGB || 10,
+            powerState,
+            status,
+            lastStatusSyncAt: new Date()
+          }
+        });
+        imported++;
+      }
+    }
+
+    return { imported, updated, total: proxmoxVms.length };
   }
 
   async create(dto: CreateVmDto, user: RequestUser) {
