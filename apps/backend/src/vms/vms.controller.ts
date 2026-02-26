@@ -1,0 +1,58 @@
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { CreateVmDto } from "./dto";
+import { VmsService } from "./vms.service";
+
+@Controller("vms")
+@UseGuards(JwtAuthGuard)
+export class VmsController {
+  constructor(private readonly vmsService: VmsService) {}
+
+  @Get()
+  list(@CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
+    return this.vmsService.list(user);
+  }
+
+  @Post()
+  create(
+    @Body() dto: CreateVmDto,
+    @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }
+  ) {
+    return this.vmsService.create(dto, user);
+  }
+
+  @Get(":id")
+  getById(@Param("id") id: string, @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
+    return this.vmsService.getById(id, user);
+  }
+
+  @Post(":id/start")
+  start(@Param("id") id: string, @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
+    return this.vmsService.start(id, user);
+  }
+
+  @Post(":id/stop")
+  stop(@Param("id") id: string, @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
+    return this.vmsService.stop(id, user);
+  }
+
+  @Post(":id/reboot")
+  reboot(@Param("id") id: string, @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
+    return this.vmsService.reboot(id, user);
+  }
+
+  @Delete(":id")
+  delete(@Param("id") id: string, @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
+    return this.vmsService.delete(id, user);
+  }
+
+  @Post(":id/migrate")
+  migrate(
+    @Param("id") id: string,
+    @Body() body: { target: string },
+    @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }
+  ) {
+    return this.vmsService.migrate(id, body.target, user);
+  }
+}

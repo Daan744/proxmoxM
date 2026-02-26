@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum TemplateNodeScope {
+  CLUSTER
+  NODE_ONLY
+}
+
+enum VmRequestedNode {
+  AUTO
+  pve1
+  pve2
+  CUSTOM
+}
+
+enum VmPowerState {
+  RUNNING
+  STOPPED
+  UNKNOWN
+}
+
+enum VmStatus {
+  PROVISIONING
+  RUNNING
+  STOPPED
+  FAILED
+  DELETED
+}
+
+model User {
+  id                    String         @id @default(cuid())
+  email                 String         @unique
+  passwordHash          String
+  role                  Role           @default(USER)
+  quotaMaxVMs           Int            @default(5)
+  quotaMaxCoresTotal    Int            @default(16)
+  quotaMaxMemoryMBTotal Int            @default(32768)
+  quotaMaxDiskGBTotal   Int            @default(500)
+  createdAt             DateTime       @default(now())
+  refreshTokens         RefreshToken[]
+  ownedVms              Vm[]
+  auditLogs             AuditLog[]
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Template {
+  id                  String            @id @default(cuid())
+  name                String
+  nodeScope           TemplateNodeScope @default(CLUSTER)
+  sourceNode          String?
+  templateVmid        Int
+  storage             String?
+  defaultBridge       String?
+  defaultVlanTag      Int?
+  minCores            Int               @default(1)
+  maxCores            Int               @default(8)
+  minMemoryMB         Int               @default(1024)
+  maxMemoryMB         Int               @default(16384)
+  minDiskGB           Int               @default(10)
+  maxDiskGB           Int               @default(500)
+  haEnabledDefault    Boolean           @default(false)
+  haGroup             String?
+  allowUserNodeSelect Boolean           @default(false)
+  allowHaToggle       Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  vms                 Vm[]
+}
+
+model Vm {
+  id            String           @id @default(cuid())
+  ownerUserId   String?
+  templateId    String?
+  name          String
+  vmid          Int              @unique
+  requestedNode String           @default("AUTO")
+  currentNode   String?
+  cores         Int
+  memoryMB      Int
+  diskGB        Int
+  bridge        String?
+  vlanTag       Int?
+  haEnabled     Boolean          @default(false)
+  haGroup       String?
+  powerState    VmPowerState     @default(UNKNOWN)
+  status        VmStatus         @default(PROVISIONING)
+  ipAddress     String?
+  errorMessage  String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  deletedAt     DateTime?
+  lastStatusSyncAt DateTime?
+  ownerUser     User?            @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  template      Template?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  targetType String
+  targetId   String?
+  metaJson   Json?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}

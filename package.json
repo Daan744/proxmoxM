@@ -1,0 +1,14 @@
+{
+  "name": "proxmox-self-service-portal",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace apps/backend run start:dev",
+    "dev:frontend": "npm --workspace apps/frontend run dev",
+    "build": "npm --workspace apps/backend run build && npm --workspace apps/frontend run build"
+  }
+}

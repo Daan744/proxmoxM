@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-zinc-900 text-zinc-100;
+}
+
+input,
+select,
+textarea {
+  @apply rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100;
+}
+
+button {
+  @apply rounded px-3 py-2 text-sm;
+}

@@ -1,0 +1,48 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { setSession } from "@/lib/auth";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("admin@example.local");
+  const [password, setPassword] = useState("Admin123!");
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      const res = await api.post("/auth/login", { email, password });
+      setSession(res.data.accessToken, res.data.user);
+      router.push("/dashboard");
+    } catch {
+      setError("Login mislukt");
+    }
+  };
+
+  return (
+    <div className="mx-auto mt-24 max-w-md rounded border border-zinc-800 bg-zinc-950 p-6">
+      <h1 className="mb-4 text-xl font-semibold">Login</h1>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="w-full" />
+        <input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          type="password"
+          placeholder="Password"
+          className="w-full"
+        />
+        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        <button className="w-full bg-blue-700 text-white hover:bg-blue-600" type="submit">
+          Login
+        </button>
+      </form>
+      <p className="mt-4 text-sm text-zinc-400">
+        Nog geen account? <a href="/register">Register</a>
+      </p>
+    </div>
+  );
+}
