@@ -28,23 +28,48 @@ export class TemplatesService {
 
   async syncFromProxmox() {
     const nodes = await this.proxmox.listNodes();
-    const discovered: Array<Record<string, unknown>> = [];
+    let created = 0;
+    let updated = 0;
 
     for (const node of nodes) {
       const nodeName = String(node.node);
       const qemus = await this.proxmox.listQemu(nodeName);
       for (const vm of qemus) {
-        if (vm.template === 1 || vm.template === true) {
-          discovered.push({
-            node: nodeName,
-            vmid: Number(vm.vmid),
-            name: String(vm.name ?? `template-${vm.vmid}`),
-            storage: vm.storage ?? null
+        if (vm.template !== 1 && vm.template !== true) continue;
+        const vmid = Number(vm.vmid);
+        const name = String(vm.name ?? `template-${vmid}`);
+        const existing = await this.prisma.template.findFirst({ where: { templateVmid: vmid } });
+        if (existing) {
+          await this.prisma.template.update({
+            where: { id: existing.id },
+            data: { name, sourceNode: nodeName }
           });
+          updated++;
+        } else {
+          await this.prisma.template.create({
+            data: {
+              name,
+              templateVmid: vmid,
+              nodeScope: "CLUSTER",
+              sourceNode: nodeName,
+              storage: "local-lvm",
+              defaultBridge: "vmbr0",
+              minCores: 1,
+              maxCores: 16,
+              minMemoryMB: 512,
+              maxMemoryMB: 65536,
+              minDiskGB: 5,
+              maxDiskGB: 1000,
+              haEnabledDefault: false,
+              allowUserNodeSelect: true,
+              allowHaToggle: true
+            }
+          });
+          created++;
         }
       }
     }
 
-    return discovered;
+    return { created, updated, total: created + updated };
   }
 }

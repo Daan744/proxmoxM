@@ -65,39 +65,67 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       where: { id: vmId },
       include: { template: true, ownerUser: true }
     });
-    if (!vm || !vm.template || vm.deletedAt) return;
+    if (!vm || vm.deletedAt) return;
+    if (!vm.template && !vm.isoPath) return;
 
     try {
       await this.validateQuota(vm.ownerUserId, vm.id);
-      let selectedNode = await this.resolveNode(vm.requestedNode, vm.template.sourceNode);
-      try {
-        const upid = await this.proxmox.cloneQemu(selectedNode, vm.template.templateVmid, {
-          newid: vm.vmid,
-          name: vm.name
-        });
-        await this.proxmox.waitForTask(selectedNode, upid, 300);
-      } catch {
-        const fallback = await this.findFallbackNode(selectedNode);
-        if (!fallback) throw new Error("No fallback node available");
-        selectedNode = fallback;
-        const upid = await this.proxmox.cloneQemu(selectedNode, vm.template.templateVmid, {
-          newid: vm.vmid,
-          name: vm.name
+      let selectedNode = await this.resolveNode(vm.requestedNode, vm.template?.sourceNode ?? null);
+
+      if (vm.template) {
+        try {
+          const upid = await this.proxmox.cloneQemu(selectedNode, vm.template.templateVmid, {
+            newid: vm.vmid,
+            name: vm.name
+          });
+          await this.proxmox.waitForTask(selectedNode, upid, 300);
+        } catch {
+          const fallback = await this.findFallbackNode(selectedNode);
+          if (!fallback) throw new Error("No fallback node available");
+          selectedNode = fallback;
+          const upid = await this.proxmox.cloneQemu(selectedNode, vm.template.templateVmid, {
+            newid: vm.vmid,
+            name: vm.name
+          });
+          await this.proxmox.waitForTask(selectedNode, upid, 300);
+        }
+      } else if (vm.isoPath) {
+        const net0 = `virtio,bridge=${vm.bridge ?? "vmbr0"}${vm.vlanTag ? `,tag=${vm.vlanTag}` : ""}`;
+        const upid = await this.proxmox.createQemu(selectedNode, {
+          vmid: vm.vmid,
+          name: vm.name,
+          cores: vm.cores,
+          memory: vm.memoryMB,
+          scsihw: "virtio-scsi-single",
+          scsi0: `local-lvm:${vm.diskGB}`,
+          ide2: `${vm.isoPath},media=cdrom`,
+          net0,
+          ostype: "l26",
+          boot: "order=ide2;scsi0"
         });
         await this.proxmox.waitForTask(selectedNode, upid, 300);
       }
 
-      const net0 = `virtio,bridge=${vm.bridge ?? vm.template.defaultBridge ?? "vmbr0"}${
-        vm.vlanTag ? `,tag=${vm.vlanTag}` : ""
-      }`;
-      await this.proxmox.setConfig(selectedNode, vm.vmid, { cores: vm.cores, memory: vm.memoryMB, net0 });
+      if (vm.template) {
+        const net0 = `virtio,bridge=${vm.bridge ?? vm.template.defaultBridge ?? "vmbr0"}${
+          vm.vlanTag ? `,tag=${vm.vlanTag}` : ""
+        }`;
+        await this.proxmox.setConfig(selectedNode, vm.vmid, { cores: vm.cores, memory: vm.memoryMB, net0 });
+        if (vm.diskGB > vm.template.minDiskGB) {
+          await this.proxmox.resizeDisk(selectedNode, vm.vmid, "scsi0", `+${vm.diskGB - vm.template.minDiskGB}G`);
+        }
+      }
 
-      if (vm.diskGB > vm.template.minDiskGB) {
-        await this.proxmox.resizeDisk(selectedNode, vm.vmid, "scsi0", `+${vm.diskGB - vm.template.minDiskGB}G`);
+      const ciConfig: Record<string, unknown> = {};
+      if (vm.ciUser) ciConfig.ciuser = vm.ciUser;
+      if (vm.ciSshKey) ciConfig.sshkeys = encodeURIComponent(vm.ciSshKey);
+      if (Object.keys(ciConfig).length > 0) {
+        ciConfig.ipconfig0 = "ip=dhcp";
+        await this.proxmox.setConfig(selectedNode, vm.vmid, ciConfig);
       }
 
       if (vm.haEnabled) {
-        await this.proxmox.addHaResource(vm.vmid, vm.haGroup ?? vm.template.haGroup ?? undefined);
+        await this.proxmox.addHaResource(vm.vmid, vm.haGroup ?? vm.template?.haGroup ?? undefined);
       }
 
       const startUpid = await this.proxmox.startVm(selectedNode, vm.vmid);

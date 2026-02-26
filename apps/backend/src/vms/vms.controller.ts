@@ -14,6 +14,16 @@ export class VmsController {
     return this.vmsService.list(user);
   }
 
+  @Get("isos")
+  listIsos() {
+    return this.vmsService.listIsos();
+  }
+
+  @Get("nodes")
+  listNodes() {
+    return this.vmsService.listNodes();
+  }
+
   @Post()
   create(
     @Body() dto: CreateVmDto,
@@ -25,6 +35,11 @@ export class VmsController {
   @Get(":id")
   getById(@Param("id") id: string, @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
     return this.vmsService.getById(id, user);
+  }
+
+  @Get(":id/live")
+  getLive(@Param("id") id: string, @CurrentUser() user: { id: string; role: "USER" | "ADMIN" }) {
+    return this.vmsService.getLive(id, user);
   }
 
   @Post(":id/start")

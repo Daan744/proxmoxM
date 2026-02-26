@@ -134,6 +134,45 @@ export class ProxmoxService {
     return null;
   }
 
+  listStorageContent(node: string, storage: string, contentType = "iso") {
+    return this.get<Array<Record<string, unknown>>>(`/nodes/${node}/storage/${storage}/content?content=${contentType}`);
+  }
+
+  createQemu(node: string, config: Record<string, unknown>) {
+    return this.post<string>(`/nodes/${node}/qemu`, config);
+  }
+
+  getQemuStatus(node: string, vmid: number) {
+    return this.get<Record<string, unknown>>(`/nodes/${node}/qemu/${vmid}/status/current`);
+  }
+
+  async listAllIsos() {
+    const nodes = await this.listNodes();
+    const isos: Array<{ node: string; storage: string; volid: string; name: string; size: number }> = [];
+    for (const node of nodes) {
+      const nodeName = String(node.node);
+      const storages = await this.listNodeStorage(nodeName);
+      for (const s of storages) {
+        if (!String(s.content ?? "").includes("iso")) continue;
+        try {
+          const files = await this.listStorageContent(nodeName, String(s.storage), "iso");
+          for (const f of files) {
+            isos.push({
+              node: nodeName,
+              storage: String(s.storage),
+              volid: String(f.volid),
+              name: String(f.volid).split("/").pop() ?? String(f.volid),
+              size: Number(f.size ?? 0)
+            });
+          }
+        } catch {
+          this.logger.warn(`Failed listing ISOs on ${nodeName}/${String(s.storage)}`);
+        }
+      }
+    }
+    return isos;
+  }
+
   listHaResources() {
     return this.get<Array<Record<string, unknown>>>("/cluster/ha/resources");
   }

@@ -102,6 +102,9 @@ model Vm {
   vlanTag       Int?
   haEnabled     Boolean          @default(false)
   haGroup       String?
+  ciUser        String?
+  ciSshKey      String?
+  isoPath       String?
   powerState    VmPowerState     @default(UNKNOWN)
   status        VmStatus         @default(PROVISIONING)
   ipAddress     String?

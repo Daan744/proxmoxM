@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Role, VmPowerState, VmStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -21,7 +21,7 @@ export class VmsService {
 
   async list(user: RequestUser) {
     return this.prisma.vm.findMany({
-      where: user.role === Role.ADMIN ? {} : { ownerUserId: user.id },
+      where: user.role === Role.ADMIN ? { deletedAt: null } : { ownerUserId: user.id, deletedAt: null },
       orderBy: { createdAt: "desc" }
     });
   }
@@ -33,24 +33,53 @@ export class VmsService {
     return vm;
   }
 
+  async getLive(id: string, user: RequestUser) {
+    const vm = await this.getById(id, user);
+    const node = vm.currentNode ?? (await this.proxmox.findVmNode(vm.vmid));
+    if (!node) return { ...vm, live: null };
+    try {
+      const live = await this.proxmox.getQemuStatus(node, vm.vmid);
+      return { ...vm, live };
+    } catch {
+      return { ...vm, live: null };
+    }
+  }
+
+  async listIsos() {
+    return this.proxmox.listAllIsos();
+  }
+
+  async listNodes() {
+    return this.proxmox.listNodes();
+  }
+
   async create(dto: CreateVmDto, user: RequestUser) {
     if (user.role === Role.USER && this.config.get("ALLOW_USER_PROVISIONING", "false") !== "true") {
       throw new ForbiddenException("User provisioning disabled");
     }
+    if (!dto.templateId && !dto.isoPath) {
+      throw new BadRequestException("Either templateId or isoPath is required");
+    }
 
-    const template = await this.prisma.template.findUnique({ where: { id: dto.templateId } });
-    if (!template) throw new NotFoundException("Template not found");
-    if (dto.requestedNode && dto.requestedNode !== "AUTO" && !template.allowUserNodeSelect) {
-      throw new ForbiddenException("Template does not allow node selection");
-    }
-    if (dto.cores < template.minCores || dto.cores > template.maxCores) {
-      throw new ForbiddenException("Cores out of template limits");
-    }
-    if (dto.memoryMB < template.minMemoryMB || dto.memoryMB > template.maxMemoryMB) {
-      throw new ForbiddenException("Memory out of template limits");
-    }
-    if (dto.diskGB < template.minDiskGB || dto.diskGB > template.maxDiskGB) {
-      throw new ForbiddenException("Disk out of template limits");
+    const template = dto.templateId
+      ? await this.prisma.template.findUnique({ where: { id: dto.templateId } })
+      : null;
+
+    if (dto.templateId && !template) throw new NotFoundException("Template not found");
+
+    if (template) {
+      if (dto.requestedNode && dto.requestedNode !== "AUTO" && !template.allowUserNodeSelect) {
+        throw new ForbiddenException("Template does not allow node selection");
+      }
+      if (dto.cores < template.minCores || dto.cores > template.maxCores) {
+        throw new ForbiddenException("Cores out of template limits");
+      }
+      if (dto.memoryMB < template.minMemoryMB || dto.memoryMB > template.maxMemoryMB) {
+        throw new ForbiddenException("Memory out of template limits");
+      }
+      if (dto.diskGB < template.minDiskGB || dto.diskGB > template.maxDiskGB) {
+        throw new ForbiddenException("Disk out of template limits");
+      }
     }
 
     const ownerUserId = user.role === Role.ADMIN ? (dto.ownerUserId ?? user.id) : user.id;
@@ -62,16 +91,19 @@ export class VmsService {
         name: dto.name,
         vmid,
         ownerUserId,
-        templateId: dto.templateId,
+        templateId: dto.templateId ?? null,
+        isoPath: dto.isoPath ?? null,
         requestedNode: dto.requestedNode ?? "AUTO",
         currentNode: null,
         cores: dto.cores,
         memoryMB: dto.memoryMB,
         diskGB: dto.diskGB,
-        bridge: dto.bridge ?? template.defaultBridge ?? "vmbr0",
-        vlanTag: dto.vlanTag ?? template.defaultVlanTag,
-        haEnabled: dto.haEnabled ?? template.haEnabledDefault,
-        haGroup: dto.haGroup ?? template.haGroup,
+        bridge: dto.bridge ?? template?.defaultBridge ?? "vmbr0",
+        vlanTag: dto.vlanTag ?? template?.defaultVlanTag,
+        haEnabled: dto.haEnabled ?? template?.haEnabledDefault ?? false,
+        haGroup: dto.haGroup ?? template?.haGroup,
+        ciUser: dto.cloudInit?.username ?? null,
+        ciSshKey: dto.cloudInit?.sshKey ?? null,
         status: VmStatus.PROVISIONING,
         powerState: VmPowerState.UNKNOWN
       }
@@ -83,7 +115,7 @@ export class VmsService {
       action: "vm.create.requested",
       targetType: "Vm",
       targetId: vm.id,
-      meta: { vmid, ownerUserId }
+      meta: { vmid, ownerUserId, mode: dto.isoPath ? "iso" : "template" }
     });
     return vm;
   }
@@ -127,11 +159,7 @@ export class VmsService {
     if (node) {
       await this.proxmox.deleteVm(node, vm.vmid);
       if (vm.haEnabled) {
-        try {
-          await this.proxmox.removeHaResource(vm.vmid);
-        } catch {
-          // Best effort due Proxmox version differences.
-        }
+        try { await this.proxmox.removeHaResource(vm.vmid); } catch { /* best effort */ }
       }
     }
     return this.prisma.vm.update({
@@ -146,9 +174,7 @@ export class VmsService {
   }
 
   async migrate(id: string, target: string, user: RequestUser) {
-    if (user.role !== Role.ADMIN) {
-      throw new ForbiddenException("Only admins can migrate");
-    }
+    if (user.role !== Role.ADMIN) throw new ForbiddenException("Only admins can migrate");
     const vm = await this.getById(id, user);
     const node = vm.currentNode ?? (await this.proxmox.findVmNode(vm.vmid));
     if (!node) throw new NotFoundException("VM node not found");

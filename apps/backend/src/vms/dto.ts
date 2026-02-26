@@ -15,8 +15,13 @@ export class CreateVmDto {
   @IsString()
   name!: string;
 
+  @IsOptional()
   @IsString()
-  templateId!: string;
+  templateId?: string;
+
+  @IsOptional()
+  @IsString()
+  isoPath?: string;
 
   @IsOptional()
   @IsString()
