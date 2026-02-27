@@ -32,7 +32,10 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: config.get("CORS_ORIGIN")?.split(",").map((o) => o.trim()) || true,
+    origin: config
+      .get("CORS_ORIGIN")
+      ?.split(",")
+      .map((o: string) => o.trim()) || true,
     credentials: true
   });
   app.useGlobalPipes(

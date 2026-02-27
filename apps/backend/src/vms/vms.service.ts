@@ -90,8 +90,9 @@ export class VmsService {
       proxmoxVms = await this.listProxmoxVms();
     } catch (err) {
       this.logProxmoxError("syncFromProxmox list", err);
+      const msg = err instanceof Error ? err.message : String(err);
       throw new BadRequestException(
-        "Proxmox niet bereikbaar. Controleer PROXMOX_HOST en token."
+        msg.startsWith("Proxmox API:") ? msg : `Proxmox niet bereikbaar: ${msg}`
       );
     }
     let imported = 0;

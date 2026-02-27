@@ -17,9 +17,10 @@ export class ProxmoxService {
   private readonly client: AxiosInstance;
 
   constructor(private readonly config: ConfigService) {
-    const host = this.config.getOrThrow<string>("PROXMOX_HOST");
-    const tokenId = this.config.getOrThrow<string>("PROXMOX_TOKEN_ID");
-    const tokenSecret = this.config.getOrThrow<string>("PROXMOX_TOKEN_SECRET");
+    let host = this.config.getOrThrow<string>("PROXMOX_HOST").trim();
+    host = host.replace(/^https?:\/\//i, "").replace(/:8006$/i, "").split("/")[0].trim() || host;
+    const tokenId = this.config.getOrThrow<string>("PROXMOX_TOKEN_ID").trim();
+    const tokenSecret = this.config.getOrThrow<string>("PROXMOX_TOKEN_SECRET").trim();
     const tlsInsecure = this.config.get("PROXMOX_TLS_INSECURE", "false") === "true";
 
     const baseURL = `https://${host}:8006/api2/json`;
@@ -65,7 +66,8 @@ export class ProxmoxService {
             : String(response.data?.data).substring(0, 200)
       });
       // #endregion
-      return response.data.data as T;
+      const payload = response.data?.data !== undefined ? response.data.data : response.data;
+      return payload as T;
     } catch (err: unknown) {
       const axErr = err as { response?: { status?: number; data?: unknown }; code?: string; message?: string };
       // #region agent log
@@ -77,7 +79,13 @@ export class ProxmoxService {
         responseData: JSON.stringify(axErr.response?.data ?? null).substring(0, 500)
       });
       // #endregion
-      throw err;
+      const msg = axErr.response?.data && typeof axErr.response.data === "object" && "errors" in axErr.response.data
+        ? String((axErr.response.data as { errors?: unknown }).errors)
+        : axErr.message ?? String(err);
+      const status = axErr.response?.status;
+      const apiMsg = `Proxmox API: ${status ?? axErr.code ?? "error"} - ${msg}`;
+      this.logger.warn(`GET ${url} failed: ${apiMsg}`);
+      throw Object.assign(new Error(apiMsg), { response: axErr.response, code: axErr.code });
     }
   }
 
